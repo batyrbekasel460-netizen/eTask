@@ -1,98 +1,61 @@
-# vinext-starter
+# eTask
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Корпоративная клиент-серверная система управления задачами ДРГУиЦ.
 
-## Prerequisites
+## Архитектура
 
-- Node.js `>=22.13.0`
+- Frontend: React 19 + TypeScript, Material UI, React DnD, Recharts.
+- Backend: Node.js + Express, REST API, JWT.
+- Database: PostgreSQL 16 с транзакциями, индексами и контролем версий задач.
+- Files: локальное серверное хранилище `storage/uploads`; метаданные хранятся в PostgreSQL.
+- Deployment: один сервер в локальной сети, без обязательного доступа к Интернету.
 
-## Quick Start
+```text
+Браузеры сотрудников ──HTTP──> React :3000
+                              │ REST + JWT
+                              ▼
+                         Express :4000
+                          │          │
+                          ▼          ▼
+                    PostgreSQL   storage/uploads
+```
+
+## Быстрый запуск через Docker
+
+1. Скопируйте `.env.example` в `.env` и обязательно замените `JWT_SECRET` и пароль PostgreSQL.
+2. В `FRONTEND_ORIGIN` укажите IP сервера, например `http://192.168.1.10:3000`.
+3. В `NEXT_PUBLIC_API_URL` укажите `http://192.168.1.10:4000/api`.
+4. Запустите:
+
+```bash
+docker compose up -d --build
+```
+
+Сотрудники открывают `http://<IP-СЕРВЕРА>:3000`. Демонстрационная учетная запись после первого запуска: `k.zhumabayev` / `password`. Пароль необходимо сменить перед эксплуатацией.
+
+## Локальная разработка
+
+Требуется Node.js 22+ и PostgreSQL 16+.
 
 ```bash
 npm install
+psql "$DATABASE_URL" -f database/schema.sql
+psql "$DATABASE_URL" -f database/seed.sql
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+`npm run dev` одновременно запускает frontend и API. Сервер слушает `0.0.0.0`, поэтому доступен другим компьютерам локальной сети при разрешенных портах 3000 и 4000.
 
-## Included Shape
+## Команды
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+- `npm run dev` — frontend и backend в режиме разработки.
+- `npm run build` — сборка frontend.
+- `npm run build:server` — проверка типов и сборка Express API.
+- `npm run start` — запуск собранного frontend.
+- `npm run start:server` — запуск собранного API.
 
-## Workspace Auth Headers
+## Безопасность
 
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
+Авторизация и ролевые ограничения проверяются на сервере. Эксперт получает только свои задачи, руководитель — данные своего управления, заместитель и директор — весь департамент. JWT имеет ограниченный срок жизни. Загружаемые файлы получают безопасные серверные имена и ограничены размером 50 МБ.
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+Для промышленной эксплуатации разместите eTask за локальным reverse proxy (Nginx/Caddy), включите внутренний TLS, настройте резервное копирование PostgreSQL и каталога `storage/uploads`, а также смените все начальные секреты.
