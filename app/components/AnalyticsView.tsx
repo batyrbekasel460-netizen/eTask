@@ -1,0 +1,11 @@
+"use client";
+
+import { Avatar, LinearProgress } from "@mui/material";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
+import type { AnalyticsData } from "../api";
+
+export default function AnalyticsView({data}:{data:AnalyticsData|null}) {
+  if(!data)return <div className="emptyState" role="status">Загрузка данных…</div>;
+  const pie=[{name:"Выполнено",value:data.departments.reduce((sum,x)=>sum+x.completed,0),color:"#246BCE"},{name:"Просрочено",value:data.departments.reduce((sum,x)=>sum+x.overdue,0),color:"#D94B4B"}];
+  return <><div className="pageTitle"><div><p>Показатели департамента</p><h1>Аналитика</h1><p>Данные рассчитываются по текущему рабочему пространству</p></div></div><div className="analyticsGrid"><section className="chart panel"><div className="panelHead"><div><h3>Выполнение по управлениям</h3></div></div><ResponsiveContainer width="100%" height={280}><BarChart data={data.departments}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="department"/><YAxis/><ChartTooltip/><Bar dataKey="completed" name="Выполнено" fill="#246BCE" radius={[7,7,0,0]}/><Bar dataKey="overdue" name="Просрочено" fill="#D94B4B" radius={[7,7,0,0]}/></BarChart></ResponsiveContainer></section><section className="chart panel"><div className="panelHead"><div><h3>Результативность</h3></div></div><ResponsiveContainer width="100%" height={230}><PieChart><Pie data={pie} dataKey="value" innerRadius={62} outerRadius={94}>{pie.map(item=><Cell key={item.name} fill={item.color}/>)}</Pie><ChartTooltip/></PieChart></ResponsiveContainer></section></div><section className="panel teamLoad"><div className="panelHead"><div><h3>Загрузка сотрудников</h3><p>Активные, выполненные и просроченные задачи</p></div></div>{data.employees.map((employee,index)=><div className="loadRow" key={employee.id}><Avatar className={`av${index%4}`}>{employee.fullName.split(" ").map(x=>x[0]).slice(0,2).join("")}</Avatar><strong>{employee.fullName}</strong><div><LinearProgress variant="determinate" value={Math.min(employee.active*10,100)}/><small>{employee.active} активных</small></div><span>{employee.completed} выполнено</span><span>{employee.overdue} просрочено</span></div>)}</section></>;
+}

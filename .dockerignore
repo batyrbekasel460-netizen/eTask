@@ -7,3 +7,7 @@ storage
 tmp
 .wrangler
 .vinext
+backups
+.codex
+.agents
+npm-debug.log*

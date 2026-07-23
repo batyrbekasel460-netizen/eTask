@@ -1,61 +1,69 @@
 # eTask
 
-Корпоративная клиент-серверная система управления задачами ДРГУиЦ.
+Корпоративная клиент‑серверная система управления задачами ДРГУиЦ, рассчитанная на одновременную работу сотрудников в закрытой локальной сети.
 
 ## Архитектура
 
-- Frontend: React 19 + TypeScript, Material UI, React DnD, Recharts.
-- Backend: Node.js + Express, REST API, JWT.
-- Database: PostgreSQL 16 с транзакциями, индексами и контролем версий задач.
-- Files: локальное серверное хранилище `storage/uploads`; метаданные хранятся в PostgreSQL.
-- Deployment: один сервер в локальной сети, без обязательного доступа к Интернету.
+- React 19 + TypeScript, Material UI, React DnD и Recharts на клиенте.
+- Node.js 22 + Express 5 и REST API на сервере.
+- PostgreSQL 16: транзакции, индексы и оптимистическая блокировка задач по `version`.
+- Файлы до 50 МБ хранятся в серверном томе; в PostgreSQL находятся только метаданные.
+- JWT передаётся только в `HttpOnly`, `SameSite=Strict` cookie, связан с серверной сессией и не доступен JavaScript-коду.
+- Nginx публикует frontend и `/api` на одном адресе, поэтому рабочим станциям не нужен отдельный адрес API.
 
 ```text
-Браузеры сотрудников ──HTTP──> React :3000
-                              │ REST + JWT
-                              ▼
-                         Express :4000
-                          │          │
-                          ▼          ▼
-                    PostgreSQL   storage/uploads
+Браузеры сотрудников ──HTTP/HTTPS──> Nginx :80
+                                      ├── /     → React :3000
+                                      └── /api → Express :4000
+                                                     ├── PostgreSQL
+                                                     └── storage/uploads
 ```
 
-## Быстрый запуск через Docker
+## Запуск на одном сервере
 
-1. Скопируйте `.env.example` в `.env` и обязательно замените `JWT_SECRET` и пароль PostgreSQL.
-2. В `FRONTEND_ORIGIN` укажите IP сервера, например `http://192.168.1.10:3000`.
-3. В `NEXT_PUBLIC_API_URL` укажите `http://192.168.1.10:4000/api`.
-4. Запустите:
+Требуются Docker Engine и Docker Compose. Доступ в Интернет нужен только один раз для загрузки образов и пакетов; после сборки eTask работает автономно.
+
+1. Скопируйте `.env.example` в `.env`.
+2. Установите уникальные `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD` (не менее 12 символов) и `JWT_SECRET` (не менее 32 символов).
+3. Добавьте адрес сервера в `FRONTEND_ORIGIN`, если frontend и API будут публиковаться на разных источниках. При стандартном запуске через Nginx используется один источник.
+4. Запустите `docker compose up -d --build`.
+5. Откройте `http://<IP-СЕРВЕРА>/` и войдите как `admin` с паролем `BOOTSTRAP_ADMIN_PASSWORD`.
+
+Начальный пользователь создаётся только при первой инициализации пустого тома PostgreSQL. Пароль не хранится в репозитории. Для внутреннего HTTPS установите `COOKIE_SECURE=true` и завершайте TLS на Nginx либо корпоративном reverse proxy.
+
+## Обновление существующей базы
+
+Перед обновлением сделайте резервную копию. Миграции выполняются последовательно:
 
 ```bash
-docker compose up -d --build
+psql "$DATABASE_URL" -f database/migrations/001_notifications_and_subtasks.sql
+psql "$DATABASE_URL" -f database/migrations/002_server_sessions.sql
+psql "$DATABASE_URL" -f database/migrations/003_system_administrator.sql
 ```
-
-Сотрудники открывают `http://<IP-СЕРВЕРА>:3000`. Демонстрационная учетная запись после первого запуска: `k.zhumabayev` / `password`. Пароль необходимо сменить перед эксплуатацией.
 
 ## Локальная разработка
 
-Требуется Node.js 22+ и PostgreSQL 16+.
+Нужны Node.js не ниже 22.13 и PostgreSQL 16.
 
 ```bash
-npm install
+npm ci
 psql "$DATABASE_URL" -f database/schema.sql
 psql "$DATABASE_URL" -f database/seed.sql
-npm run dev
+BOOTSTRAP_ADMIN_PASSWORD='уникальный-пароль' POSTGRES_USER=etask POSTGRES_DB=etask database/03-bootstrap.sh
+npm run dev:server
+# В отдельном терминале:
+npm run dev:frontend
 ```
 
-`npm run dev` одновременно запускает frontend и API. Сервер слушает `0.0.0.0`, поэтому доступен другим компьютерам локальной сети при разрешенных портах 3000 и 4000.
+Для разработки задайте `NEXT_PUBLIC_API_URL=http://localhost:4000/api`.
 
-## Команды
+## Проверка качества
 
-- `npm run dev` — frontend и backend в режиме разработки.
-- `npm run build` — сборка frontend.
-- `npm run build:server` — проверка типов и сборка Express API.
-- `npm run start` — запуск собранного frontend.
-- `npm run start:server` — запуск собранного API.
+- `npm run lint` — ESLint для клиентского и серверного кода.
+- `npm run build:server` — строгая проверка TypeScript и сборка API.
+- `npm run verify` — lint, строгая типизация API и production-сборка frontend.
+- `npm audit --omit=dev` — аудит production-зависимостей.
 
-## Безопасность
+## Эксплуатация
 
-Авторизация и ролевые ограничения проверяются на сервере. Эксперт получает только свои задачи, руководитель — данные своего управления, заместитель и директор — весь департамент. JWT имеет ограниченный срок жизни. Загружаемые файлы получают безопасные серверные имена и ограничены размером 50 МБ.
-
-Для промышленной эксплуатации разместите eTask за локальным reverse proxy (Nginx/Caddy), включите внутренний TLS, настройте резервное копирование PostgreSQL и каталога `storage/uploads`, а также смените все начальные секреты.
+Подробная инструкция администратора находится в `docs/PRODUCTION.md`, а проверенная матрица полномочий — в `docs/ACCESS_MATRIX.md`.

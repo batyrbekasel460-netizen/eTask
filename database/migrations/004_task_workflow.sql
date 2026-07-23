@@ -1,0 +1,11 @@
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS current_stage text NOT NULL DEFAULT 'Директор';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS return_reason text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS return_count integer NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS stage_started_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
+UPDATE tasks SET status='Новая' WHERE status='Новые';
+UPDATE tasks SET status='В работе' WHERE status='На согласовании';
+UPDATE tasks SET status='На проверке руководителя' WHERE status='На проверке';
+UPDATE tasks SET status='Выполнена' WHERE status='Выполнено';
+ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN('Новая','Назначена','В работе','На проверке руководителя','На согласовании заместителя','На утверждении директора','Выполнена','Закрыта'));
+CREATE INDEX IF NOT EXISTS tasks_stage_idx ON tasks(current_stage,status,stage_started_at);
